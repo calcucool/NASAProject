@@ -2,7 +2,6 @@ import React, { useEffect, useState, useRef, useMemo } from "react";
 import "ol/ol.css";
 import Map from "ol/Map";
 import View from "ol/View";
-import { fromLonLat } from "ol/proj";
 
 import Zoom from "ol/control/Zoom";
 
@@ -29,35 +28,38 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { ListSubheader, Tooltip } from "@mui/material";
+import { ListSubheader, Tooltip, Button } from "@mui/material";
 
 import events from "./preloaded_events.json";
-import "./MapView.css";
+import "./WorldView.css";
 import { FormControl, InputLabel, Select, MenuItem, Switch, Box } from "@mui/material";
 
+import { useDispatch, useSelector } from "react-redux";
+import { initializeMapState, cacheLayersForDate, setLayerVisible, setStyleOptions } from "./store/mapSlice";
+
 const TOAST_COOLDOWN = 5000;
+const defaultStyleKey = "HLS S30 NADIR";
+const defaultDate = new Date(Date.now() - 86400000 * 2);
 
-const MapView = () => {
+const WorldView = () => {
+    const dispatch = useDispatch();
+    const layersByDate = useSelector((state) => state.map.layersByDate);
+    const layerVisible = useSelector((state) => state.map.layerVisible);
+    const styleOptions = useSelector((state) => state.map.styleOptions);
 
-    const [selectedDate, setSelectedDate] = useState(new Date(Date.now() - 86400000 * 2));
+    const [selectedDate, setSelectedDate] = useState(defaultDate);
     const [loading, setLoading] = useState(false);
     const [selectedEventIdx, setSelectedEventIdx] = useState("");
-    const [layerVisible, setLayerVisible] = useState(true);
-    const [selectedStyle, setSelectedStyle] = useState("trueColor");
+    const [selectedStyle, setSelectedStyle] = useState("HLS S30 NADIR");
+    const [loadingDots, setLoadingDots] = useState("");
 
     const mapRef = useRef(null);
     const hlsLayerRef = useRef([]);
     const osmLayerRef = useRef(null);
     const markerLayerRef = useRef(null);
     const pulseLayerRef = useRef(null);
-
     const lastToastTime = useRef(0);
     const lastToastType = useRef(null);
-
-    const layerOptions = {
-        trueColor: "HLS_S30_Nadir_BRDF_Adjusted_Reflectance",
-        falseColor: "HLS_L30_Nadir_BRDF_Adjusted_Reflectance",
-    };
 
     const groupedEvents = useMemo(() => {
         return Object.entries(
@@ -70,7 +72,7 @@ const MapView = () => {
         );
     }, []);
 
-    const createHLSLayerForDate = (styleKey, date) => {
+    const createHLSLayerForDate = (styleKey, date, onTileStats) => {
         const proj = getProjection("EPSG:4326");
         const extent = proj.getExtent();
         const size = getWidth(extent) / 256;
@@ -80,26 +82,60 @@ const MapView = () => {
             matrixIds[z] = z;
         }
 
-        return new TileLayer({
-            source: new WMTS({
-                url: "https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/wmts.cgi",
-                layer: layerOptions[styleKey],
-                style: "default",
-                matrixSet: "31.25m",
-                format: "image/png",
-                projection: proj,
-                tileGrid: new WMTSTileGrid({
-                    origin: getTopLeft(extent),
-                    resolutions,
-                    matrixIds
-                }),
-                dimensions: { TIME: date.toISOString().split("T")[0] },
-                wrapX: true
+        const source = new WMTS({
+            url: "https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/wmts.cgi",
+            layer: styleOptions[styleKey],
+            style: "default",
+            matrixSet: "31.25m",
+            format: "image/png",
+            projection: proj,
+            tileGrid: new WMTSTileGrid({
+                origin: getTopLeft(extent),
+                resolutions,
+                matrixIds
             }),
+            dimensions: { TIME: date.toISOString().split("T")[0] },
+            wrapX: true
+        });
+
+        if (onTileStats) {
+            source.on("tileloadstart", () => onTileStats("start"));
+            source.on("tileloaderror", () => onTileStats("error"));
+        }
+
+        return new TileLayer({
+            source,
             opacity: 0.8,
             visible: layerVisible
         });
     };
+
+    useEffect(() => {
+        if (loading) {
+            const interval = setInterval(() => {
+                setLoadingDots(prev => (prev.length >= 3 ? "" : prev + "."));
+            }, 500);
+            return () => clearInterval(interval);
+        } else {
+            setLoadingDots("");
+        }
+    }, [loading]);
+
+    useEffect(() => {
+        dispatch(initializeMapState());
+        fetchStyles().then(styles => {
+            dispatch(setStyleOptions(styles));
+            if (styles[defaultStyleKey]) {
+                setSelectedStyle(defaultStyleKey);
+            } else {
+                // fallback if HLS_S30 doesn't exist
+                const keys = Object.keys(styles);
+                if (keys.length > 0) {
+                    setSelectedStyle(keys[0]);
+                }
+            }
+        });
+    }, [dispatch]);
 
     useEffect(() => {
         setLoading(true);
@@ -113,7 +149,7 @@ const MapView = () => {
 
         const mapInstance = new Map({
             target: "map",
-            layers: [osmLayer], // Start with just OSM
+            layers: [osmLayer],
             view: new View({
                 projection: "EPSG:4326",
                 center: [0, 0],
@@ -123,18 +159,55 @@ const MapView = () => {
         });
 
         mapInstance.addControl(new Zoom({ className: "custom-zoom" }));
-
         mapRef.current = mapInstance;
 
-        updateLayer(selectedStyle, selectedDate);
+        mapInstance.getViewport().style.backgroundColor = "#5385c2ff";
 
-        mapInstance.getViewport().style.backgroundColor = "#5385c2ff"; // Deep Ocean Blue
+        const sixDays = 6 * 24 * 60 * 60 * 1000;
+        const cacheEntry = layersByDate[selectedDate.toISOString()];
 
-        setTimeout(() => setLoading(false), 1000);
+        if (cacheEntry && cacheEntry.wmtsLayers && cacheEntry.wmtsLayers.length && Date.now() - cacheEntry.lastUpdated < sixDays) {
+            cacheEntry.wmtsLayers.forEach(cfg => {
+                const layer = createHLSLayerForDate(cfg.styleKey, new Date(cfg.time));
+                mapRef.current.addLayer(layer);
+                hlsLayerRef.current.push(layer);
+            });
+        } else {
+            const wmtsConfigs = updateLayer(selectedStyle, new Date(selectedDate));
+            dispatch(cacheLayersForDate({
+                date: selectedDate.toISOString(),
+                styleKey: selectedStyle,
+                wmtsLayers: wmtsConfigs,
+                lastUpdated: Date.now()
+            }));
+        }
 
+        setTimeout(() => setLoading(false), 6000);
     }, []);
 
+    const fetchStyles = async () => {
+        const url =
+            "https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/wmts.cgi?request=GetCapabilities";
+        const res = await fetch(url);
+        const text = await res.text();
 
+        const parser = new DOMParser();
+        const xmlDoc = parser.parseFromString(text, "application/xml");
+
+        const layers = xmlDoc.getElementsByTagName("Layer");
+        const stylesMap = {};
+
+        Array.from(layers)?.forEach((layer) => {
+            const identifier =
+                layer.getElementsByTagName("ows:Identifier")[0]?.textContent;
+            if (identifier?.includes("HLS_") || identifier?.includes("OPERA_")) {
+                const label = identifier.split("_").slice(0, 3).join(" ").toUpperCase();
+                stylesMap[label] = identifier;
+            }
+        });
+
+        return stylesMap;
+    };
 
     const triggerToast = (type, message) => {
         const now = Date.now();
@@ -147,12 +220,26 @@ const MapView = () => {
 
     const updateLayer = (styleKey, date) => {
         if (!mapRef.current) return;
+        setLoading(true);
+
+        let totalStarted = 0;
+        let totalFailed = 0;
+        const onTileStats = (event) => {
+            if (event === "start") totalStarted++;
+            if (event === "error") totalFailed++;
+        };
+
+        const wmtsConfigs = [];
 
         if (hlsLayerRef.current.length === 0) {
             for (let i = 0; i < 10; i++) {
                 const day = new Date(date);
                 day.setDate(date.getDate() - i);
-                const hlsLayer = createHLSLayerForDate(styleKey, day);
+                const dayISO = day.toISOString().split("T")[0];
+
+                wmtsConfigs.push({ styleKey, time: dayISO });
+
+                const hlsLayer = createHLSLayerForDate(styleKey, day, onTileStats);
                 mapRef.current.addLayer(hlsLayer);
                 hlsLayerRef.current.push(hlsLayer);
             }
@@ -160,23 +247,33 @@ const MapView = () => {
             hlsLayerRef.current.forEach((layer, i) => {
                 const day = new Date(date);
                 day.setDate(date.getDate() - i);
+                const dayISO = day.toISOString().split("T")[0];
 
-                layer.setSource(new WMTS({
-                    url: `https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/wmts.cgi?TIME=${day.toISOString().split("T")[0]}&v=${Date.now()}`, // cache-busting
-                    layer: layerOptions[styleKey],
-                    style: "default",
-                    matrixSet: "31.25m",
-                    format: "image/png",
-                    projection: getProjection("EPSG:4326"),
-                    tileGrid: new WMTSTileGrid({
-                        origin: getTopLeft(getProjection("EPSG:4326").getExtent()),
-                        resolutions: Array.from({ length: 15 }, (_, z) => getWidth(getProjection("EPSG:4326").getExtent()) / 256 / Math.pow(2, z)),
-                        matrixIds: Array.from({ length: 15 }, (_, z) => z)
-                    }),
-                    wrapX: true
-                }));
+                wmtsConfigs.push({ styleKey, time: dayISO });
+
+                const newLayer = createHLSLayerForDate(styleKey, day, onTileStats);
+                layer.setSource(newLayer.getSource());
             });
         }
+
+        // Check failures once all tile requests started
+        setTimeout(() => {
+            const failureRate = totalStarted > 0 ? totalFailed / totalStarted : 0;
+            if (failureRate > 0.5) {
+                triggerToast("error", `Encountered loading maps for ${styleKey}`);
+            } else {
+                triggerToast("success", `Loaded ${styleKey} successfully`);
+            }
+        }, 3000);
+
+        dispatch(cacheLayersForDate({
+            date: date.toISOString(),
+            styleKey,
+            wmtsLayers: wmtsConfigs,
+            lastUpdated: Date.now()
+        }));
+
+        setTimeout(() => setLoading(false), 6000);
     };
 
     const handleDateChange = (date) => {
@@ -194,18 +291,16 @@ const MapView = () => {
     const handleVisibilityToggle = () => {
         setSelectedEventIdx("");
         const newVisibility = !layerVisible;
-        setLayerVisible(newVisibility);
+        dispatch(setLayerVisible(newVisibility));
 
         if (newVisibility) {
             mapRef.current.removeLayer(pulseLayerRef.current);
             pulseLayerRef.current = null;
         }
 
-        // Just toggle visibility instead of removing/adding
         hlsLayerRef.current.forEach(layer => layer.setVisible(newVisibility));
         osmLayerRef.current.setVisible(!newVisibility);
 
-        // Keep the same view without resetting it
         mapRef.current.render();
     };
 
@@ -234,20 +329,30 @@ const MapView = () => {
         if (pulseLayerRef.current) map.removeLayer(pulseLayerRef.current);
 
         const pulseFeature = new Feature({ geometry: new Point(lonLat) });
-        pulseFeature.setStyle(new Style({
-            image: new CircleStyle({
-                radius: 10,
-                fill: new Fill({ color: "rgba(255,0,0,0.4)" }),
-                stroke: new Stroke({ color: "red", width: 2 })
-            })
-        }));
-
         const vectorSource = new VectorSource({ features: [pulseFeature] });
         const pulseLayer = new VectorLayer({ source: vectorSource, zIndex: 9999 });
-        if (!layerVisible) {
-            map.addLayer(pulseLayer);
-            pulseLayerRef.current = pulseLayer;
-        }
+        if (!layerVisible) map.addLayer(pulseLayer);
+        pulseLayerRef.current = pulseLayer;
+
+        let radius = 10;
+        let growing = true;
+        const animatePulse = () => {
+            radius += growing ? 0.3 : -0.3;
+            if (radius >= 20) growing = false;
+            if (radius <= 10) growing = true;
+
+            pulseFeature.setStyle(new Style({
+                image: new CircleStyle({
+                    radius,
+                    fill: new Fill({ color: "rgba(255,0,0,0.4)" }),
+                    stroke: new Stroke({ color: "red", width: 2 })
+                })
+            }));
+
+            map.render();
+            requestAnimationFrame(animatePulse);
+        };
+        if (!layerVisible) requestAnimationFrame(animatePulse);
 
         view.animate(
             { center: lonLat, duration: 1500 },
@@ -256,6 +361,26 @@ const MapView = () => {
 
         triggerToast("success", `Moved to event: ${selectedEvent.event_name}`);
     };
+
+    const handleReset = () => {
+
+        setSelectedDate(defaultDate);
+        setSelectedEventIdx("");
+        setSelectedStyle(defaultStyleKey);
+        dispatch(setLayerVisible(true));
+
+        updateLayer(defaultStyleKey, defaultDate);
+
+        if (mapRef.current) {
+            const view = mapRef.current.getView();
+            view.animate({
+                center: [0, 0],
+                zoom: 0,
+                duration: 1000
+            });
+        }
+    };
+
 
     return (
         <Box style={{ position: "relative" }}>
@@ -326,16 +451,39 @@ const MapView = () => {
                         </Select>
                     </Tooltip>
                 </FormControl>
+                {loading && (
+                    <Box
+                        style={{
+                            position: "absolute",
+                            top: "60px",
+                            left: "50%",
+                            transform: "translateX(-50%)",
+                            backgroundColor: "rgba(255,255,255,0.7)",
+                            padding: "5px 15px",
+                            borderRadius: "5px",
+                            boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
+                            zIndex: 1000,
+                            fontWeight: "bold",
+                            border: "none",
+                            margin: '1rem'
+                        }}
+                    >
+                        Loading map{loadingDots}
+                    </Box>
+                )}
                 <FormControl size="small" sx={{ minWidth: 150 }}>
-                    <Tooltip title="Select Layer">
+                    <Tooltip title="Select Style">
                         <Select
                             id="style-id"
                             value={selectedStyle}
                             onChange={handleStyleChange}
                             disabled={!layerVisible}
                         >
-                            <MenuItem value="trueColor">HLS S30 (True Color)</MenuItem>
-                            <MenuItem value="falseColor">HLS L30 (True Color)</MenuItem>
+                            {Object.keys(styleOptions).map((key) => (
+                                <MenuItem key={key} value={key}>
+                                    {key.replace(/_/g, " ")}
+                                </MenuItem>
+                            ))}
                         </Select>
                     </Tooltip>
                 </FormControl>
@@ -347,30 +495,22 @@ const MapView = () => {
                         />
                     </Tooltip>
                 </Box>
-            </Box>
-            {loading && (
-                <Box
-                    style={{
-                        position: "absolute",
-                        top: "60px",
-                        left: "50%",
-                        transform: "translateX(-50%)",
-                        backgroundColor: "rgba(255,255,255,0.9)",
-                        padding: "5px 15px",
-                        borderRadius: "5px",
-                        boxShadow: "0 1px 4px rgba(0,0,0,0.3)",
-                        zIndex: 1000,
-                        fontWeight: "bold",
-                        margin: '1rem'
-                    }}
-                >
-                    Loading imagery...
+                <Box display="flex" alignItems="center">
+                    <Tooltip title="Reset Map">
+                        <Button
+                            onClick={handleReset}
+                            variant="outlined"
+                            sx={{ color: 'inherit', borderColor: '#A8A8A8' }}
+                        >
+                            Reset
+                        </Button>
+                    </Tooltip>
                 </Box>
-            )}
+            </Box>
             <Box id="map" style={{ width: "100%", height: "100vh" }}></Box>
             <ToastContainer />
         </Box>
     );
 };
 
-export default MapView;
+export default WorldView;

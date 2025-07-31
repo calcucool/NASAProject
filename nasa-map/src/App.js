@@ -1,10 +1,10 @@
-import MapView from "./MapView";
+import WorldView from "./WorldView";
 import './App.css';
 
 function App() {
   return (
     <div className="App">
-      <MapView />
+      <WorldView />
     </div>
   );
 }

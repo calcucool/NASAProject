@@ -1,27 +1,37 @@
 import { createSlice } from "@reduxjs/toolkit";
 
+const SIX_DAYS_MS = 6 * 24 * 60 * 60 * 1000;
+
 const initialState = {
-    selectedStyle: "trueColor",
-    selectedDate: new Date(Date.now() - 86400000 * 5).toISOString(),
-    lastUpdated: null
+    layersByDate: {},    // Cached WMTS config per date
+    layerVisible: true,  // Persisted visibility toggle
+    styleOptions: {}     // Persisted Styles
 };
 
 const mapSlice = createSlice({
     name: "map",
     initialState,
     reducers: {
-        setMapState: (state, action) => {
-            state.selectedStyle = action.payload.selectedStyle;
-            state.selectedDate = action.payload.selectedDate;
-            state.lastUpdated = Date.now();
+        initializeMapState: (state) => {
+            const now = Date.now();
+            for (const date in state.layersByDate) {
+                if (now - state.layersByDate[date].lastUpdated > SIX_DAYS_MS) {
+                    delete state.layersByDate[date];
+                }
+            }
         },
-        resetMapState: (state) => {
-            state.selectedStyle = "trueColor";
-            state.selectedDate = new Date(Date.now() - 86400000 * 2).toISOString();
-            state.lastUpdated = null;
+        cacheLayersForDate: (state, action) => {
+            const { date, styleKey, wmtsLayers, lastUpdated } = action.payload;
+            state.layersByDate[date] = { styleKey, wmtsLayers, lastUpdated };
+        },
+        setLayerVisible: (state, action) => {
+            state.layerVisible = action.payload;
+        },
+        setStyleOptions: (state, action) => { // ✅ Fixed name
+            state.styleOptions = action.payload;
         }
     }
 });
 
-export const { setMapState, resetMapState } = mapSlice.actions;
+export const { initializeMapState, cacheLayersForDate, setLayerVisible, setStyleOptions } = mapSlice.actions;
 export default mapSlice.reducer;
