@@ -32,9 +32,6 @@
   "jest": {
     "transformIgnorePatterns": [
       "node_modules/(?!ol)/"
-    ],
-    "setupFilesAfterEnv": [
-      "<rootDir>/src/setupTests.js"
     ]
   },
   "babel": {
