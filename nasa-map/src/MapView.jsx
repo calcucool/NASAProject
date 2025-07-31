@@ -1,45 +1,53 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
-import Zoom from "ol/control/Zoom";
 import "ol/ol.css";
 import Map from "ol/Map";
 import View from "ol/View";
-import TileLayer from "ol/layer/Tile";
-import WMTS from "ol/source/WMTS";
-import WMTSTileGrid from "ol/tilegrid/WMTS";
-import { get as getProjection, fromLonLat } from "ol/proj";
-import { getTopLeft, getWidth } from "ol/extent";
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
-import { ToastContainer, toast } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
-import events from "./preloaded_events.json";
-import { ListSubheader } from "@mui/material";
-import "./MapView.css";
+import { fromLonLat } from "ol/proj";
 
+import Zoom from "ol/control/Zoom";
+
+import TileLayer from "ol/layer/Tile";
 import VectorLayer from "ol/layer/Vector";
+
+import OSM from "ol/source/OSM";
 import VectorSource from "ol/source/Vector";
+import WMTS from "ol/source/WMTS";
+
+import WMTSTileGrid from "ol/tilegrid/WMTS";
+import { get as getProjection } from "ol/proj";
+import { getTopLeft, getWidth } from "ol/extent";
+
 import Feature from "ol/Feature";
 import Point from "ol/geom/Point";
+
 import Style from "ol/style/Style";
 import CircleStyle from "ol/style/Circle";
 import Fill from "ol/style/Fill";
 import Stroke from "ol/style/Stroke";
 
-import OSM from "ol/source/OSM";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import { ListSubheader, Tooltip } from "@mui/material";
 
-import { FormControl, InputLabel, Select, MenuItem, Checkbox, Box } from "@mui/material";
+import events from "./preloaded_events.json";
+import "./MapView.css";
+import { FormControl, InputLabel, Select, MenuItem, Switch, Box } from "@mui/material";
 
 const TOAST_COOLDOWN = 5000;
 
 const MapView = () => {
-    const [selectedDate, setSelectedDate] = useState(new Date(Date.now() - 86400000));
+
+    const [selectedDate, setSelectedDate] = useState(new Date(Date.now() - 86400000 * 2));
     const [loading, setLoading] = useState(false);
     const [selectedEventIdx, setSelectedEventIdx] = useState("");
     const [layerVisible, setLayerVisible] = useState(true);
-    const [selectedStyle, setSelectedStyle] = useState("default");
+    const [selectedStyle, setSelectedStyle] = useState("trueColor");
 
     const mapRef = useRef(null);
-    const modisLayerRef = useRef(null);
+    const hlsLayerRef = useRef([]);
+    const osmLayerRef = useRef(null);
     const markerLayerRef = useRef(null);
     const pulseLayerRef = useRef(null);
 
@@ -47,9 +55,8 @@ const MapView = () => {
     const lastToastType = useRef(null);
 
     const layerOptions = {
-        default: "VIIRS_SNPP_CorrectedReflectance_TrueColor",
-        falseColor: "VIIRS_SNPP_CorrectedReflectance_BandsM11-I2-I1",
-        night: "VIIRS_SNPP_DayNightBand_At_Sensor_Radiance"
+        trueColor: "HLS_S30_Nadir_BRDF_Adjusted_Reflectance",
+        falseColor: "HLS_L30_Nadir_BRDF_Adjusted_Reflectance",
     };
 
     const groupedEvents = useMemo(() => {
@@ -63,76 +70,71 @@ const MapView = () => {
         );
     }, []);
 
-    const createWMTSLayer = (style, date) => {
-        const projection = getProjection("EPSG:3857");
-        const projectionExtent = projection.getExtent();
-        const size = getWidth(projectionExtent) / 256;
-        const resolutions = [];
-        const matrixIds = [];
-
-        for (let z = 0; z <= 9; ++z) {
+    const createHLSLayerForDate = (styleKey, date) => {
+        const proj = getProjection("EPSG:4326");
+        const extent = proj.getExtent();
+        const size = getWidth(extent) / 256;
+        const resolutions = [], matrixIds = [];
+        for (let z = 0; z <= 14; z++) {
             resolutions[z] = size / Math.pow(2, z);
             matrixIds[z] = z;
         }
 
         return new TileLayer({
-            opacity: 0,
             source: new WMTS({
-                url: "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/wmts.cgi",
-                layer: layerOptions[style],
+                url: "https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/wmts.cgi",
+                layer: layerOptions[styleKey],
                 style: "default",
-                matrixSet: "GoogleMapsCompatible_Level9",
-                format: "image/jpeg",
-                projection: projection,
+                matrixSet: "31.25m",
+                format: "image/png",
+                projection: proj,
                 tileGrid: new WMTSTileGrid({
-                    origin: getTopLeft(projectionExtent),
-                    resolutions: resolutions,
-                    matrixIds: matrixIds
+                    origin: getTopLeft(extent),
+                    resolutions,
+                    matrixIds
                 }),
                 dimensions: { TIME: date.toISOString().split("T")[0] },
                 wrapX: true
-            })
+            }),
+            opacity: 0.8,
+            visible: layerVisible
         });
     };
 
     useEffect(() => {
         setLoading(true);
+
         const osmLayer = new TileLayer({
             source: new OSM(),
             zIndex: 0,
+            visible: !layerVisible
         });
-        const modis = createWMTSLayer(selectedStyle, selectedDate);
+        osmLayerRef.current = osmLayer;
 
         const mapInstance = new Map({
             target: "map",
-            layers: [osmLayer, modis],
+            layers: [osmLayer], // Start with just OSM
             view: new View({
-                projection: "EPSG:3857",
-                center: [0, 3500000],
-                zoom: 2,
+                projection: "EPSG:4326",
+                center: [0, 0],
+                zoom: 0
             }),
             controls: []
         });
 
-        // Add custom zoom control
-        import("ol/control/Zoom").then(({ default: Zoom }) => {
-            const zoomControl = new Zoom({
-                className: "custom-zoom"
-            });
-            mapInstance.addControl(zoomControl);
-        });
-
-        // Add custom zoom
-        mapInstance.addControl(
-            new Zoom({ className: "custom-zoom" })
-        );
+        mapInstance.addControl(new Zoom({ className: "custom-zoom" }));
 
         mapRef.current = mapInstance;
-        modisLayerRef.current = modis;
-        modis.setOpacity(1);
+
+        updateLayer(selectedStyle, selectedDate);
+
+        mapInstance.getViewport().style.backgroundColor = "#5385c2ff"; // Deep Ocean Blue
 
         setTimeout(() => setLoading(false), 1000);
+
     }, []);
+
+
 
     const triggerToast = (type, message) => {
         const now = Date.now();
@@ -143,37 +145,38 @@ const MapView = () => {
         lastToastType.current = type;
     };
 
-    const updateLayer = (style, date) => {
-        if (!mapRef.current || !modisLayerRef.current) return;
-        const newLayer = createWMTSLayer(style, date);
+    const updateLayer = (styleKey, date) => {
+        if (!mapRef.current) return;
 
-        const source = newLayer.getSource();
-        let pendingTiles = 0;
-
-        source.on("tileloadstart", () => {
-            setLoading(true);
-            pendingTiles++;
-        });
-        source.on("tileloadend", () => {
-            pendingTiles--;
-            if (pendingTiles <= 0) {
-                setLoading(false);
-                newLayer.setOpacity(1);
-                triggerToast("success", `Imagery updated: ${date.toISOString().split("T")[0]}, Style: ${style}`);
+        if (hlsLayerRef.current.length === 0) {
+            for (let i = 0; i < 10; i++) {
+                const day = new Date(date);
+                day.setDate(date.getDate() - i);
+                const hlsLayer = createHLSLayerForDate(styleKey, day);
+                mapRef.current.addLayer(hlsLayer);
+                hlsLayerRef.current.push(hlsLayer);
             }
-        });
-        source.on("tileloaderror", () => {
-            pendingTiles--;
-            if (pendingTiles <= 0) {
-                setLoading(false);
-                triggerToast("error", "Failed to load imagery.");
-            }
-        });
+        } else {
+            hlsLayerRef.current.forEach((layer, i) => {
+                const day = new Date(date);
+                day.setDate(date.getDate() - i);
 
-        mapRef.current.removeLayer(modisLayerRef.current);
-        mapRef.current.addLayer(newLayer);
-        modisLayerRef.current = newLayer;
-        newLayer.setVisible(layerVisible);
+                layer.setSource(new WMTS({
+                    url: `https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/wmts.cgi?TIME=${day.toISOString().split("T")[0]}&v=${Date.now()}`, // cache-busting
+                    layer: layerOptions[styleKey],
+                    style: "default",
+                    matrixSet: "31.25m",
+                    format: "image/png",
+                    projection: getProjection("EPSG:4326"),
+                    tileGrid: new WMTSTileGrid({
+                        origin: getTopLeft(getProjection("EPSG:4326").getExtent()),
+                        resolutions: Array.from({ length: 15 }, (_, z) => getWidth(getProjection("EPSG:4326").getExtent()) / 256 / Math.pow(2, z)),
+                        matrixIds: Array.from({ length: 15 }, (_, z) => z)
+                    }),
+                    wrapX: true
+                }));
+            });
+        }
     };
 
     const handleDateChange = (date) => {
@@ -182,18 +185,28 @@ const MapView = () => {
         updateLayer(selectedStyle, date);
     };
 
-    const handleStyleChange = (style) => {
-        setSelectedStyle(style);
-        updateLayer(style, selectedDate);
+    const handleStyleChange = (event) => {
+        const newStyle = event.target.value;
+        setSelectedStyle(newStyle);
+        updateLayer(newStyle, selectedDate);
     };
 
     const handleVisibilityToggle = () => {
-        if (modisLayerRef.current) {
-            const newVisibility = !layerVisible;
-            modisLayerRef.current.setVisible(newVisibility);
-            setLayerVisible(newVisibility);
-            triggerToast("info", `Layer ${newVisibility ? "shown" : "hidden"}`);
+        setSelectedEventIdx("");
+        const newVisibility = !layerVisible;
+        setLayerVisible(newVisibility);
+
+        if (newVisibility) {
+            mapRef.current.removeLayer(pulseLayerRef.current);
+            pulseLayerRef.current = null;
         }
+
+        // Just toggle visibility instead of removing/adding
+        hlsLayerRef.current.forEach(layer => layer.setVisible(newVisibility));
+        osmLayerRef.current.setVisible(!newVisibility);
+
+        // Keep the same view without resetting it
+        mapRef.current.render();
     };
 
     const handleEventSelect = (eventIdx) => {
@@ -214,50 +227,31 @@ const MapView = () => {
             lonLat = coords3D.flat(Infinity).slice(0, 2);
         }
 
-        if (markerLayerRef.current) mapRef.current.removeLayer(markerLayerRef.current);
-        if (pulseLayerRef.current) mapRef.current.removeLayer(pulseLayerRef.current);
+        const map = mapRef.current;
+        const view = map.getView();
 
-        const pulseFeature = new Feature({ geometry: new Point(fromLonLat(lonLat)) });
-        const pulseStyle = new Style({
+        if (markerLayerRef.current) map.removeLayer(markerLayerRef.current);
+        if (pulseLayerRef.current) map.removeLayer(pulseLayerRef.current);
+
+        const pulseFeature = new Feature({ geometry: new Point(lonLat) });
+        pulseFeature.setStyle(new Style({
             image: new CircleStyle({
                 radius: 10,
                 fill: new Fill({ color: "rgba(255,0,0,0.4)" }),
                 stroke: new Stroke({ color: "red", width: 2 })
             })
-        });
+        }));
 
-        pulseFeature.setStyle(pulseStyle);
         const vectorSource = new VectorSource({ features: [pulseFeature] });
         const pulseLayer = new VectorLayer({ source: vectorSource, zIndex: 9999 });
+        if (!layerVisible) {
+            map.addLayer(pulseLayer);
+            pulseLayerRef.current = pulseLayer;
+        }
 
-        mapRef.current.addLayer(pulseLayer);
-        pulseLayerRef.current = pulseLayer;
-
-        let radius = 10;
-        let growing = true;
-        const animatePulse = () => {
-            if (growing) radius += 0.3;
-            else radius -= 0.3;
-            if (radius >= 20) growing = false;
-            if (radius <= 10) growing = true;
-            pulseFeature.setStyle(
-                new Style({
-                    image: new CircleStyle({
-                        radius,
-                        fill: new Fill({ color: "rgba(255,0,0,0.4)" }),
-                        stroke: new Stroke({ color: "red", width: 2 })
-                    })
-                })
-            );
-            mapRef.current.render();
-            requestAnimationFrame(animatePulse);
-        };
-        requestAnimationFrame(animatePulse);
-
-        const view = mapRef.current.getView();
         view.animate(
-            { center: fromLonLat(lonLat), duration: 1500 },
-            { zoom: 6, duration: 1500 }
+            { center: lonLat, duration: 1500 },
+            { zoom: layerVisible ? 4 : 5, duration: 1500 }
         );
 
         triggerToast("success", `Moved to event: ${selectedEvent.event_name}`);
@@ -274,77 +268,84 @@ const MapView = () => {
                     transform: "translateX(-50%)",
                     display: "flex",
                     gap: "10px",
-                    backgroundColor: "white",
+                    backgroundColor: "rgba(255, 255, 255, 0.8)",
                     padding: "8px",
                     borderRadius: "8px",
                     boxShadow: "0 2px 6px rgba(0,0,0,0.2)"
                 }}>
-                <DatePicker
-                    selected={selectedDate}
-                    onChange={handleDateChange}
-                    dateFormat="yyyy-MM-dd"
-                    disabled={!layerVisible}
-                    customInput={
-                        <input
-                            style={{
-                                height: "40px",
-                                borderRadius: "4px",
-                                border: "1px solid #c4c4c4",
-                                padding: "0 10px",
-                                fontSize: "14px",
-                                boxSizing: "border-box"
-                            }}
+                <Tooltip title="Select Date">
+                    <Box>
+                        <DatePicker
+                            selected={selectedDate}
+                            onChange={handleDateChange}
+                            dateFormat="yyyy-MM-dd"
+                            maxDate={new Date(Date.now() - 24 * 60 * 60 * 1000)}
+                            disabled={!layerVisible}
+                            customInput={
+                                <input
+                                    style={{
+                                        height: "40px",
+                                        borderRadius: "4px",
+                                        border: "1px solid #c4c4c4",
+                                        padding: "0 10px",
+                                        fontSize: "14px",
+                                        boxSizing: "border-box",
+                                        backgroundColor: "rgba(255, 255, 255, 0.4)"
+                                    }}
+                                />
+                            }
                         />
-                    }
-                />
+                    </Box>
+                </Tooltip>
                 <FormControl size="small" sx={{ minWidth: 180 }}>
-                    <InputLabel id="event-label">Event</InputLabel>
-                    <Select
-                        value={selectedEventIdx}
-                        onChange={(e) => handleEventSelect(Number(e.target.value))}
-                        labelId="event-label"
-                        id='event-id'>
-                        <MenuItem value="">
-                            <em>Select Event</em>
-                        </MenuItem>
-                        {groupedEvents.reduce((acc, [type, items]) => {
-                            acc.push(
-                                <ListSubheader key={`${type}-header`}>
-                                    {type.replace(/_/g, " ")}
-                                </ListSubheader>
-                            );
-                            items.forEach(({ idx, ev }) => {
+                    <InputLabel>Event</InputLabel>
+                    <Tooltip title="Select Event">
+                        <Select
+                            value={selectedEventIdx}
+                            onChange={(e) => handleEventSelect(Number(e.target.value))}
+                            labelId="event-label"
+                            id='event-id'>
+                            <MenuItem value="">
+                                <em>Select Event</em>
+                            </MenuItem>
+                            {groupedEvents.reduce((acc, [type, items]) => {
                                 acc.push(
-                                    <MenuItem key={idx} value={idx}>
-                                        {ev.event_name || `Event ${idx + 1}`}
-                                    </MenuItem>
+                                    <ListSubheader key={`${type}-header`}>
+                                        {type.replace(/_/g, " ")}
+                                    </ListSubheader>
                                 );
-                            });
-                            return acc;
-                        }, [])}
-                    </Select>
+                                items.forEach(({ idx, ev }) => {
+                                    acc.push(
+                                        <MenuItem key={idx} value={idx}>
+                                            {ev.event_name || `Event ${idx + 1}`}
+                                        </MenuItem>
+                                    );
+                                });
+                                return acc;
+                            }, [])}
+                        </Select>
+                    </Tooltip>
                 </FormControl>
                 <FormControl size="small" sx={{ minWidth: 150 }}>
-                    <Select
-                        id="style-id"
-                        value={selectedStyle}
-                        onChange={(e) => {
-                            setSelectedStyle(e.target.value);
-                            updateLayer(e.target.value, selectedDate);
-                        }}
-                        disabled={!layerVisible}
-                    >
-                        <MenuItem value="default">True Color</MenuItem>
-                        <MenuItem value="falseColor">False Color</MenuItem>
-                        <MenuItem value="night">Night Band</MenuItem>
-                    </Select>
+                    <Tooltip title="Select Layer">
+                        <Select
+                            id="style-id"
+                            value={selectedStyle}
+                            onChange={handleStyleChange}
+                            disabled={!layerVisible}
+                        >
+                            <MenuItem value="trueColor">HLS S30 (True Color)</MenuItem>
+                            <MenuItem value="falseColor">HLS L30 (True Color)</MenuItem>
+                        </Select>
+                    </Tooltip>
                 </FormControl>
                 <Box display="flex" alignItems="center">
-                    <Checkbox
-                        checked={layerVisible}
-                        onChange={handleVisibilityToggle}
-                    />
-                    Show Layer
+                    <Tooltip title={layerVisible ? "Show OSM Layer" : "Show HLS Layer"}>
+                        <Switch
+                            checked={layerVisible}
+                            onChange={handleVisibilityToggle}
+                        />
+                    </Tooltip>
                 </Box>
             </Box>
             {loading && (
