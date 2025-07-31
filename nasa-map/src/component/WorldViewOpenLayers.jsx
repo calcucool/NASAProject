@@ -24,7 +24,7 @@ import CircleStyle from "ol/style/Circle";
 import Fill from "ol/style/Fill";
 import Stroke from "ol/style/Stroke";
 
-import DatePicker from "react-datepicker";
+import DatePicker from "react-datepicker"; // eslint-disable-next-line 
 import "react-datepicker/dist/react-datepicker.css";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
