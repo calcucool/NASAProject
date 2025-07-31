@@ -119,5 +119,5 @@ http://localhost:3000
 
 ## Running Tests
 ```bash
-npm test -- WorldView
+npm test -- WorldViewOpenLayers
 ```
