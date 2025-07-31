@@ -1,0 +1,18 @@
+.custom-zoom {
+    left: 10px;
+    bottom: 20px;
+    top: auto;
+    /* override top */
+}
+
+.custom-zoom button {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+}
+
+
+.custom-zoom {
+    z-index: 10000;
+    /* Above UI elements */
+}
