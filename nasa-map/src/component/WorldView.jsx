@@ -30,12 +30,12 @@ import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { ListSubheader, Tooltip, Button } from "@mui/material";
 
-import events from "./preloaded_events.json";
+import events from "../preloaded_events.json";
 import "./WorldView.css";
 import { FormControl, InputLabel, Select, MenuItem, Switch, Box } from "@mui/material";
 
 import { useDispatch, useSelector } from "react-redux";
-import { initializeMapState, cacheLayersForDate, setLayerVisible, setStyleOptions } from "./store/mapSlice";
+import { initializeMapState, cacheLayersForDate, setLayerVisible, setStyleOptions } from "../store/mapSlice";
 
 const TOAST_COOLDOWN = 5000;
 const defaultStyleKey = "HLS S30 NADIR";

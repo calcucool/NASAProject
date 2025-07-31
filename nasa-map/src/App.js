@@ -1,4 +1,4 @@
-import WorldView from "./WorldView";
+import WorldView from "./component/WorldView";
 import './App.css';
 
 function App() {
