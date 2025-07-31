@@ -1,7 +1,9 @@
 
-# 🌍 NASA HLS Map Viewer
+# 🌍 NASA HLS World Viewer
 
-![NASA HLS Map Viewer](./nasaImg.png)
+🚀 **Live App**: [World View App](https://heartfelt-jalebi-6947b2.netlify.app/)
+
+![NASA HLS World Viewer](./nasaImg.png)
 
 A **React + OpenLayers + Redux** web application for exploring **NASA Harmonized Landsat Sentinel‑2 (HLS)** WMTS imagery from the **Global Imagery Browse Services (GIBS)**.
 
