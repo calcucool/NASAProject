@@ -101,7 +101,7 @@ Clone the repository and install dependencies:
 
 ```bash
 git clone https://github.com/calcucool/NASAProject.git
-cd nasa-hls-map
+cd nasa-map
 npm install
 ```
 
