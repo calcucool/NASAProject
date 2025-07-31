@@ -8,12 +8,25 @@
 A **React + OpenLayers + Redux** web application for exploring **NASA Harmonized Landsat Sentinel‑2 (HLS)** WMTS imagery from the **Global Imagery Browse Services (GIBS)**.
 
 Supports:
-- **Date selection** with live WMTS imagery updates  
-- **Event navigation** from a JSON dataset with smooth panning and pulse markers  
-- **Style switching** (True Color, False Color, Night Band, and other GIBS styles)  
-- **Layer toggling** (HLS ↔ OSM)  
-- **Reset control** to return the map to default settings  
-- **Toast notifications** for layer load success/failure  
+
+- **Date Selection** – Pick a date to reload NASA HLS WMTS imagery (defaults to two days before today)  
+
+- **Event Selection** – Choose events from a preloaded JSON file; map pans and zooms to event location with a marker  
+
+- **Style Switching** – Switch between available NASA GIBS styles:  
+  - `OPERA L3 DYNAMIC`  
+  - `HLS MGRS GRANULE`  
+  - `HLS L30 NADIR`  
+  - `HLS S30 NADIR`  
+  - `OPERA L3 DIST-ALERT-HLS`  
+  - `OPERA L3 DIST-ANN-HLS`  
+
+- **Layer Visibility Toggle** – Show or hide the HLS layer over the OSM base map  
+
+- **Reset Button** – Resets date, style, visibility, and event selection to defaults, zooming back to world view  
+
+- **Toast Notifications** – Displays success/failure when imagery tiles load or fail  
+
 
 ---
 
