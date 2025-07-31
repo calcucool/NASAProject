@@ -1,7 +1,7 @@
 
 import { useState } from "react";
 import { Tabs, Tab, Box } from "@mui/material";
-import WorldViewLeaflet from "./WorldViewLeaflet";
+import { WorldViewLeaflet } from "./component/WorldViewLeaflet";
 import WorldViewOpenLayers from "./component/WorldViewOpenLayers";
 import { Provider } from "react-redux";
 import { store, persistor } from "./store";
