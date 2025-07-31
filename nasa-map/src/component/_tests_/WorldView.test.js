@@ -4,7 +4,7 @@ import { Provider } from "react-redux";
 import configureMockStore from "redux-mock-store";
 import { thunk } from "redux-thunk";
 import WorldView from "../WorldView";
-import { setLayerVisible, setStyleOptions } from "../../store/mapSlice";
+import { setLayerVisible } from "../../store/mapSlice";
 import { mockAddControl } from "../../__mocks__/openlayers";
 
 const mockStore = configureMockStore([thunk]);

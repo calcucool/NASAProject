@@ -259,7 +259,7 @@ const WorldView = () => {
         // Check failures once all tile requests started
         setTimeout(() => {
             const failureRate = totalStarted > 0 ? totalFailed / totalStarted : 0;
-            if (failureRate > 0.5) {
+            if (failureRate > 0.7) {
                 triggerToast("error", `Encountered loading maps for ${styleKey}`);
             } else {
                 triggerToast("success", `Loaded ${styleKey} successfully`);
