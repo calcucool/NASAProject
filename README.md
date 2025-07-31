@@ -92,6 +92,7 @@ Resets the map to:
 - **React DatePicker** – Date selection  
 - **React Toastify** – Notifications  
 - **Jest + React Testing Library** – Unit testing  
+- **Docker** – Containerized production deployment  
 
 ---
 
@@ -120,4 +121,13 @@ http://localhost:3000
 ## Running Tests
 ```bash
 npm test -- WorldViewOpenLayers
+```
+
+## Docker Deployment  
+
+The application can be built and deployed using Docker for production hosting.
+
+### **Build the Docker Image**
+```bash
+docker build -t nasa-map
 ```
