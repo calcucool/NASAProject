@@ -27,7 +27,7 @@ const mapSlice = createSlice({
         setLayerVisible: (state, action) => {
             state.layerVisible = action.payload;
         },
-        setStyleOptions: (state, action) => { // ✅ Fixed name
+        setStyleOptions: (state, action) => {
             state.styleOptions = action.payload;
         }
     }
