@@ -129,7 +129,6 @@ const WorldViewOpenLayers = () => {
             if (styles[defaultStyleKey]) {
                 setSelectedStyle(defaultStyleKey);
             } else {
-                // fallback if HLS_S30 doesn't exist
                 const keys = Object.keys(styles);
                 if (keys.length > 0) {
                     setSelectedStyle(keys[0]);
@@ -257,7 +256,6 @@ const WorldViewOpenLayers = () => {
             });
         }
 
-        // Check failures once all tile requests started
         setTimeout(() => {
             const failureRate = totalStarted > 0 ? totalFailed / totalStarted : 0;
             if (failureRate > 0.7) {
@@ -389,7 +387,7 @@ const WorldViewOpenLayers = () => {
                 style={{
                     position: "absolute",
                     zIndex: 1000,
-                    bottom: "2rem",  // instead of top
+                    bottom: "2rem",
                     left: "50%",
                     transform: "translateX(-50%)",
                     display: "flex",
