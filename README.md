@@ -1,98 +1,83 @@
-
 # 🌍 NASA HLS World Viewer
 
-**Live App**: [World View App](https://heartfelt-jalebi-6947b2.netlify.app/)
+**Live App:** [World View App](https://heartfelt-jalebi-6947b2.netlify.app/)
 
 ![NASA HLS World Viewer](./nasaImg.png)
 
-A **React + OpenLayers + Redux** web application for exploring **NASA Harmonized Landsat Sentinel‑2 (HLS)** WMTS imagery from the **Global Imagery Browse Services (GIBS)**.
+A **React** web application for exploring NASA satellite imagery using two rendering engines: **OpenLayers** and **DeckGL**.
 
-Supports:
+---
 
-- **Date Selection** – Pick a date to reload NASA HLS WMTS imagery (defaults to two days before today)  
+## Map Engines
 
-- **Event Selection** – Choose events from a preloaded JSON file; map pans and zooms to event location with a marker  
+This project features two parallel implementations, each accessible via a dedicated route:
 
-- **Style Switching** – Switch between available NASA GIBS styles:  
+- **OpenLayers** (`/openlayers`)  
+  The full-featured, production-ready map viewer using OpenLayers, with NASA Harmonized Landsat Sentinel‑2 (HLS) imagery and all standard functionalities.
+
+- **DeckGL** (`/deckgl`)  
+  An alternative map viewer built with DeckGL. Currently supports VIIRS and MODIS imagery layers with core UI features like date and event selection.  
+  *Note:* This implementation is a work in progress and does not yet have full feature parity with the OpenLayers version.
+
+Users can switch between these two rendering engines via their respective routes for comparison or preference.
+
+---
+
+## OpenLayers Features
+
+- **Date Selection**  
+  Pick a date to reload NASA HLS WMTS imagery (defaults to two days before today).
+
+- **Event Selection**  
+  Choose events from a preloaded JSON file; the map pans and zooms smoothly to the event location with an animated pulse marker.
+
+- **Style Switching**  
+  Switch between available NASA GIBS styles:  
   - `OPERA L3 DYNAMIC`  
   - `HLS MGRS GRANULE`  
   - `HLS L30 NADIR`  
   - `HLS S30 NADIR`  
   - `OPERA L3 DIST-ALERT-HLS`  
-  - `OPERA L3 DIST-ANN-HLS`  
+  - `OPERA L3 DIST-ANN-HLS`
 
-- **Layer Visibility Toggle** – Show or hide the HLS layer over the OSM base map  
+- **Layer Visibility Toggle**  
+  Show or hide the HLS layer over the OSM base map.
 
-- **Reset Button** – Resets date, style, visibility, and event selection to defaults, zooming back to world view  
+- **Reset Button**  
+  Resets date, style, visibility, and event selection to defaults, zooming back to the world view.
 
-- **Toast Notifications** – Displays success/failure when imagery tiles load or fail  
+- **Toast Notifications**  
+  Displays success or error messages when imagery tiles load or fail.
 
+- **Custom Zoom Controls**  
+  Large, user-friendly zoom buttons positioned at the bottom-left.
+
+- **Responsive UI**  
+  Built with **Material UI (MUI)** for dropdowns and controls, fully responsive across devices.
 
 ---
 
-## Features
+## DeckGL Features (Work in Progress)
 
-### NASA GIBS WMTS Integration
-- Connects to the NASA Worldview WMTS endpoint.
-- Loads **HLS S30/L30** and **OPERA L3** layers dynamically.
-- Automatically parses NASA style identifiers from GetCapabilities.
-
-### Redux State Persistence
-- Caches:
-  - Selected style
-  - Selected date
-  - Layer visibility  
-- Cache refreshes automatically if older than **6 days**.
-
-### Date Selection
-- Pick a specific date to load imagery for that day.
-- Automatically fetches the corresponding **HLS WMTS layer**.
-
-### Event Selection
-- Loads a large JSON dataset of events with coordinates.
-- Smoothly pans and zooms to the selected event.
-- Displays an **animated pulse marker** at the event location.
-
-### Style Switching
-- Switch between **True Color, False Color, Night Band**, and other NASA styles.
-- Maps display names to correct WMTS identifiers automatically.
-
-### Layer Visibility Toggle
-- Toggle HLS imagery on/off.
-- Switch between **HLS imagery** and **OSM base map** instantly.
-
-### Reset Control
-Resets the map to:
-- **Date** → Two days before today  
-- **Event selection** → None  
-- **Style** → `HLS S30 NADIR`  
-- **Layer visibility** → `true`  
-- **Zoom** → World view  
-
-### Toast Notifications
-- **Success toast** when layers load successfully.
-- **Error toast** if more than **50% of tiles fail** to load.
-
-### Custom Zoom Controls
-- Large, easy-to-use zoom buttons positioned at the **bottom-left**.
-
-### Responsive UI
-- Built with **Material UI (MUI)** for dropdowns and controls.
-- Fully responsive across devices.
+- Supports date selection, event markers, and style switching UI similar to OpenLayers.
+- Currently displays NASA VIIRS and MODIS satellite imagery layers instead of HLS.
+- Basic layer visibility toggle and reset controls implemented.
+- Actively being developed to add full HLS support and match OpenLayers functionality.
 
 ---
 
 ## Tech Stack
 
-- **React** – Frontend framework  
-- **Redux Toolkit + React Redux** – State management & caching  
-- **OpenLayers** – Map rendering  
-- **NASA GIBS WMTS** – Imagery source  
-- **Material UI (MUI)** – UI components  
-- **React DatePicker** – Date selection  
-- **React Toastify** – Notifications  
-- **Jest + React Testing Library** – Unit testing  
-- **Docker** – Containerized production deployment  
+- **React** — Frontend framework  
+- **Redux Toolkit + React Redux** — State management & caching  
+- **OpenLayers** — Primary map rendering engine  
+- **DeckGL** — Secondary map rendering engine (work in progress)  
+- **NASA GIBS WMTS** — Imagery source  
+- **Material UI (MUI)** — UI components  
+- **React DatePicker** — Date selection  
+- **React Toastify** — Notifications  
+- **Jest + React Testing Library** — Unit testing  
+- **Docker** — Containerized production deployment  
 
 ---
 
