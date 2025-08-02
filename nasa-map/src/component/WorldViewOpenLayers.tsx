@@ -290,7 +290,7 @@ const WorldViewOpenLayers: React.FC = () => {
         const wmtsConfigs: { styleKey: string; time: string }[] = [];
 
         if (hlsLayerRef.current.length === 0) {
-            for (let i = 0; i < 10; i++) {
+            for (let i = 0; i < 3; i++) {
                 const day = new Date(date);
                 day.setDate(date.getDate() - i);
                 const dayISO = day.toISOString().split("T")[0];
