@@ -2,69 +2,97 @@ import React, { useEffect, useState, useRef, useMemo } from "react";
 import "ol/ol.css";
 import Map from "ol/Map";
 import View from "ol/View";
-
 import Zoom from "ol/control/Zoom";
-
 import TileLayer from "ol/layer/Tile";
 import VectorLayer from "ol/layer/Vector";
-
 import OSM from "ol/source/OSM";
 import VectorSource from "ol/source/Vector";
 import WMTS from "ol/source/WMTS";
-
 import WMTSTileGrid from "ol/tilegrid/WMTS";
 import { get as getProjection } from "ol/proj";
 import { getTopLeft, getWidth } from "ol/extent";
-
 import Feature from "ol/Feature";
 import Point from "ol/geom/Point";
-
 import Style from "ol/style/Style";
 import CircleStyle from "ol/style/Circle";
 import Fill from "ol/style/Fill";
 import Stroke from "ol/style/Stroke";
 
-import DatePicker from "react-datepicker"; // eslint-disable-next-line 
+import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { ListSubheader, Tooltip, Button } from "@mui/material";
 
-import { FormControl, InputLabel, Select, MenuItem, Switch, Box } from "@mui/material";
+import {
+    ListSubheader,
+    Tooltip,
+    Button,
+    FormControl,
+    InputLabel,
+    Select,
+    MenuItem,
+    Switch,
+    SelectChangeEvent,
+    Box
+} from "@mui/material";
 
-import { useDispatch, useSelector } from "react-redux";
-import { initializeMapState, cacheLayersForDate, setLayerVisible, setStyleOptions } from "../store/mapSlice";
+import {
+    initializeMapState,
+    cacheLayersForDate,
+    setLayerVisible,
+    setStyleOptions
+} from "../store/mapSlice";
+
+import { TypedUseSelectorHook, useDispatch, useSelector } from "react-redux";
+import type { RootState, AppDispatch } from "../store";
 
 import events from "../preloaded_events.json";
 import "./WorldViewOpenLayers.css";
+
+// ---- Types ----
+type StyleOptions = Record<string, string>;
+type EventItem = {
+    event_type?: string;
+    event_name?: string;
+    geojson?: {
+        features?: {
+            geometry?: { coordinates?: number[] | number[][][] };
+        }[];
+    };
+};
+
+export const useAppDispatch = () => useDispatch<AppDispatch>();
+export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
 
 const TOAST_COOLDOWN = 5000;
 const defaultStyleKey = "HLS S30 NADIR";
 const defaultDate = new Date(Date.now() - 86400000 * 2);
 
-const WorldViewOpenLayers = () => {
-    const dispatch = useDispatch();
-    const layersByDate = useSelector((state) => state.map.layersByDate);
-    const layerVisible = useSelector((state) => state.map.layerVisible);
-    const styleOptions = useSelector((state) => state.map.styleOptions);
+const WorldViewOpenLayers: React.FC = () => {
 
-    const [selectedDate, setSelectedDate] = useState(defaultDate);
+    const dispatch = useAppDispatch();
+    const layersByDate = useAppSelector((state: any) => state.map.layersByDate);
+    const layerVisible = useAppSelector((state: any) => state.map.layerVisible);
+    const styleOptions = useAppSelector((state: any) => state.map.styleOptions);
+
+    const [selectedDate, setSelectedDate] = useState<Date>(defaultDate);
     const [loading, setLoading] = useState(false);
-    const [selectedEventIdx, setSelectedEventIdx] = useState("");
-    const [selectedStyle, setSelectedStyle] = useState("HLS S30 NADIR");
+    const [selectedEventIdx, setSelectedEventIdx] = useState<number | "">("");
+    const [selectedStyle, setSelectedStyle] = useState<string>(defaultStyleKey);
     const [loadingDots, setLoadingDots] = useState("");
 
-    const mapRef = useRef(null);
-    const hlsLayerRef = useRef([]);
-    const osmLayerRef = useRef(null);
-    const markerLayerRef = useRef(null);
-    const pulseLayerRef = useRef(null);
-    const lastToastTime = useRef(0);
-    const lastToastType = useRef(null);
+    const mapRef = useRef<Map | null>(null);
+    const hlsLayerRef = useRef<TileLayer<WMTS>[]>([]);
+    const osmLayerRef = useRef<TileLayer<OSM> | null>(null);
+    const pulseLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+    const lastToastTime = useRef<number>(0);
+    const lastToastType = useRef<"success" | "error" | null>(null);
 
     const groupedEvents = useMemo(() => {
         return Object.entries(
-            events.reduce((acc, ev, idx) => {
+            (events as EventItem[]).reduce<
+                Record<string, { idx: number; ev: EventItem }[]>
+            >((acc, ev, idx) => {
                 const type = ev.event_type || "Other";
                 if (!acc[type]) acc[type] = [];
                 acc[type].push({ idx, ev });
@@ -73,14 +101,27 @@ const WorldViewOpenLayers = () => {
         );
     }, []);
 
-    const createHLSLayerForDate = (styleKey, date, onTileStats) => {
+    const createHLSLayerForDate = (
+        styleKey: string,
+        date: Date,
+        onTileStats?: (status: "start" | "error") => void
+    ) => {
+
+
         const proj = getProjection("EPSG:4326");
+        if (!proj) {
+            throw new Error("Projection EPSG:4326 could not be loaded");
+        }
         const extent = proj.getExtent();
+        if (!extent) return null;
+
         const size = getWidth(extent) / 256;
-        const resolutions = [], matrixIds = [];
+        const resolutions: number[] = [];
+        const matrixIds: string[] = [];
+
         for (let z = 0; z <= 14; z++) {
             resolutions[z] = size / Math.pow(2, z);
-            matrixIds[z] = z;
+            matrixIds[z] = z.toString();
         }
 
         const source = new WMTS({
@@ -114,7 +155,7 @@ const WorldViewOpenLayers = () => {
     useEffect(() => {
         if (loading) {
             const interval = setInterval(() => {
-                setLoadingDots(prev => (prev.length >= 3 ? "" : prev + "."));
+                setLoadingDots((prev) => (prev.length >= 3 ? "" : prev + "."));
             }, 500);
             return () => clearInterval(interval);
         } else {
@@ -124,16 +165,11 @@ const WorldViewOpenLayers = () => {
 
     useEffect(() => {
         dispatch(initializeMapState());
-        fetchStyles().then(styles => {
+        fetchStyles().then((styles) => {
             dispatch(setStyleOptions(styles));
-            if (styles[defaultStyleKey]) {
-                setSelectedStyle(defaultStyleKey);
-            } else {
-                const keys = Object.keys(styles);
-                if (keys.length > 0) {
-                    setSelectedStyle(keys[0]);
-                }
-            }
+            setSelectedStyle(
+                styles[defaultStyleKey] ? defaultStyleKey : Object.keys(styles)[0]
+            );
         });
     }, [dispatch]);
 
@@ -160,26 +196,35 @@ const WorldViewOpenLayers = () => {
 
         mapInstance.addControl(new Zoom({ className: "custom-zoom" }));
         mapRef.current = mapInstance;
-
         mapInstance.getViewport().style.backgroundColor = "#5385c2ff";
 
-        const sixDays = 6 * 24 * 60 * 60 * 1000;
         const cacheEntry = layersByDate[selectedDate.toISOString()];
 
-        if (cacheEntry && cacheEntry.wmtsLayers && cacheEntry.wmtsLayers.length && Date.now() - cacheEntry.lastUpdated < sixDays) {
-            cacheEntry.wmtsLayers.forEach(cfg => {
-                const layer = createHLSLayerForDate(cfg.styleKey, new Date(cfg.time));
-                mapRef.current.addLayer(layer);
-                hlsLayerRef.current.push(layer);
+        if (
+            cacheEntry &&
+            cacheEntry.wmtsLayers?.length &&
+            Date.now() - cacheEntry.lastUpdated < 6 * 24 * 60 * 60 * 1000
+        ) {
+            cacheEntry.wmtsLayers.forEach((cfg: { styleKey: string; time: string }) => {
+                const layer = createHLSLayerForDate(
+                    cfg.styleKey,
+                    new Date(cfg.time)
+                );
+                if (layer) {
+                    mapRef.current?.addLayer(layer);
+                    hlsLayerRef.current.push(layer);
+                }
             });
         } else {
             const wmtsConfigs = updateLayer(selectedStyle, new Date(selectedDate));
-            dispatch(cacheLayersForDate({
-                date: selectedDate.toISOString(),
-                styleKey: selectedStyle,
-                wmtsLayers: wmtsConfigs,
-                lastUpdated: Date.now()
-            }));
+            dispatch(
+                cacheLayersForDate({
+                    date: selectedDate.toISOString(),
+                    styleKey: selectedStyle,
+                    wmtsLayers: wmtsConfigs,
+                    lastUpdated: Date.now()
+                })
+            );
         }
 
         setTimeout(() => setLoading(false), 6000);
@@ -187,7 +232,7 @@ const WorldViewOpenLayers = () => {
         return () => toast.dismiss();
     }, []);
 
-    const fetchStyles = async () => {
+    const fetchStyles = async (): Promise<StyleOptions> => {
         const url =
             "https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/wmts.cgi?request=GetCapabilities";
         const res = await fetch(url);
@@ -197,13 +242,20 @@ const WorldViewOpenLayers = () => {
         const xmlDoc = parser.parseFromString(text, "application/xml");
 
         const layers = xmlDoc.getElementsByTagName("Layer");
-        const stylesMap = {};
+        const stylesMap: StyleOptions = {};
 
-        Array.from(layers)?.forEach((layer) => {
+        Array.from(layers).forEach((layer) => {
             const identifier =
                 layer.getElementsByTagName("ows:Identifier")[0]?.textContent;
-            if (identifier?.includes("HLS_") || identifier?.includes("OPERA_")) {
-                const label = identifier.split("_").slice(0, 3).join(" ").toUpperCase();
+            if (
+                identifier?.includes("HLS_") ||
+                identifier?.includes("OPERA_")
+            ) {
+                const label = identifier
+                    .split("_")
+                    .slice(0, 3)
+                    .join(" ")
+                    .toUpperCase();
                 stylesMap[label] = identifier;
             }
         });
@@ -211,27 +263,31 @@ const WorldViewOpenLayers = () => {
         return stylesMap;
     };
 
-    const triggerToast = (type, message) => {
+    const triggerToast = (type: "success" | "error", message: string) => {
         const now = Date.now();
-        if (type === lastToastType.current && now - lastToastTime.current < TOAST_COOLDOWN) return;
+        if (
+            type === lastToastType.current &&
+            now - lastToastTime.current < TOAST_COOLDOWN
+        )
+            return;
         if (type !== lastToastType.current) toast.dismiss();
         toast[type](message, { position: "top-right", autoClose: 3000 });
         lastToastTime.current = now;
         lastToastType.current = type;
     };
 
-    const updateLayer = (styleKey, date) => {
-        if (!mapRef.current) return;
+    const updateLayer = (styleKey: string, date: Date) => {
+        if (!mapRef.current) return [];
         setLoading(true);
 
         let totalStarted = 0;
         let totalFailed = 0;
-        const onTileStats = (event) => {
+        const onTileStats = (event: "start" | "error") => {
             if (event === "start") totalStarted++;
             if (event === "error") totalFailed++;
         };
 
-        const wmtsConfigs = [];
+        const wmtsConfigs: { styleKey: string; time: string }[] = [];
 
         if (hlsLayerRef.current.length === 0) {
             for (let i = 0; i < 10; i++) {
@@ -242,8 +298,10 @@ const WorldViewOpenLayers = () => {
                 wmtsConfigs.push({ styleKey, time: dayISO });
 
                 const hlsLayer = createHLSLayerForDate(styleKey, day, onTileStats);
-                mapRef.current.addLayer(hlsLayer);
-                hlsLayerRef.current.push(hlsLayer);
+                if (hlsLayer) {
+                    mapRef.current.addLayer(hlsLayer);
+                    hlsLayerRef.current.push(hlsLayer);
+                }
             }
         } else {
             hlsLayerRef.current.forEach((layer, i) => {
@@ -254,37 +312,44 @@ const WorldViewOpenLayers = () => {
                 wmtsConfigs.push({ styleKey, time: dayISO });
 
                 const newLayer = createHLSLayerForDate(styleKey, day, onTileStats);
-                layer.setSource(newLayer.getSource());
+                if (newLayer) {
+                    layer.setSource(newLayer.getSource());
+                }
             });
         }
 
         setTimeout(() => {
-            const failureRate = totalStarted > 0 ? totalFailed / totalStarted : 0;
+            const failureRate =
+                totalStarted > 0 ? totalFailed / totalStarted : 0;
             if (failureRate > 0.7) {
                 triggerToast("error", `Encountered loading maps for ${styleKey}`);
             } else {
-                triggerToast("success", `Loaded hhhhhhhhhh${styleKey} successfully`);
+                triggerToast("success", `Loaded ${styleKey} successfully`);
             }
         }, 3000);
 
-        dispatch(cacheLayersForDate({
-            date: date.toISOString(),
-            styleKey,
-            wmtsLayers: wmtsConfigs,
-            lastUpdated: Date.now()
-        }));
+        dispatch(
+            cacheLayersForDate({
+                date: date.toISOString(),
+                styleKey,
+                wmtsLayers: wmtsConfigs,
+                lastUpdated: Date.now()
+            })
+        );
 
         setTimeout(() => setLoading(false), 6000);
+
+        return wmtsConfigs;
     };
 
-    const handleDateChange = (date) => {
+    const handleDateChange = (date: Date) => {
         setSelectedDate(date);
         setSelectedEventIdx("");
         updateLayer(selectedStyle, date);
     };
 
-    const handleStyleChange = (event) => {
-        const newStyle = event.target.value;
+    const handleStyleChange = (event: SelectChangeEvent<string>) => {
+        const newStyle = event.target.value as string;
         setSelectedStyle(newStyle);
         updateLayer(newStyle, selectedDate);
     };
@@ -295,43 +360,53 @@ const WorldViewOpenLayers = () => {
         dispatch(setLayerVisible(newVisibility));
 
         if (newVisibility) {
-            mapRef.current.removeLayer(pulseLayerRef.current);
+            if (pulseLayerRef.current)
+                mapRef.current?.removeLayer(pulseLayerRef.current);
             pulseLayerRef.current = null;
         }
 
-        hlsLayerRef.current.forEach(layer => layer.setVisible(newVisibility));
-        osmLayerRef.current.setVisible(!newVisibility);
+        hlsLayerRef.current.forEach((layer) =>
+            layer.setVisible(newVisibility)
+        );
+        osmLayerRef.current?.setVisible(!newVisibility);
 
-        mapRef.current.render();
+        mapRef.current?.render();
     };
 
-    const handleEventSelect = (eventIdx) => {
+    const handleEventSelect = (eventIdx: number) => {
         setSelectedEventIdx(eventIdx);
-        const selectedEvent = events[eventIdx];
+        const selectedEvent = (events as EventItem[])[eventIdx];
         if (!selectedEvent || !mapRef.current) return;
 
-        const coords3D = selectedEvent.geojson?.features?.[0]?.geometry?.coordinates;
+        const coords3D =
+            selectedEvent.geojson?.features?.[0]?.geometry?.coordinates;
         if (!coords3D) {
-            triggerToast("error", `No coordinates for ${selectedEvent.event_name}`);
+            triggerToast(
+                "error",
+                `No coordinates for ${selectedEvent.event_name}`
+            );
             return;
         }
 
-        let lonLat;
+        let lonLat: number[];
         if (typeof coords3D[0] === "number") {
-            lonLat = coords3D;
+            lonLat = coords3D as number[];
         } else {
-            lonLat = coords3D.flat(Infinity).slice(0, 2);
+            lonLat = (coords3D as any).flat(Infinity).slice(0, 2);
         }
 
         const map = mapRef.current;
         const view = map.getView();
 
-        if (markerLayerRef.current) map.removeLayer(markerLayerRef.current);
-        if (pulseLayerRef.current) map.removeLayer(pulseLayerRef.current);
+        if (pulseLayerRef.current)
+            map.removeLayer(pulseLayerRef.current);
 
         const pulseFeature = new Feature({ geometry: new Point(lonLat) });
         const vectorSource = new VectorSource({ features: [pulseFeature] });
-        const pulseLayer = new VectorLayer({ source: vectorSource, zIndex: 9999 });
+        const pulseLayer = new VectorLayer({
+            source: vectorSource,
+            zIndex: 9999
+        });
         if (!layerVisible) map.addLayer(pulseLayer);
         pulseLayerRef.current = pulseLayer;
 
@@ -342,13 +417,15 @@ const WorldViewOpenLayers = () => {
             if (radius >= 20) growing = false;
             if (radius <= 10) growing = true;
 
-            pulseFeature.setStyle(new Style({
-                image: new CircleStyle({
-                    radius,
-                    fill: new Fill({ color: "rgba(255,0,0,0.4)" }),
-                    stroke: new Stroke({ color: "red", width: 2 })
+            pulseFeature.setStyle(
+                new Style({
+                    image: new CircleStyle({
+                        radius,
+                        fill: new Fill({ color: "rgba(255,0,0,0.4)" }),
+                        stroke: new Stroke({ color: "red", width: 2 })
+                    })
                 })
-            }));
+            );
 
             map.render();
             requestAnimationFrame(animatePulse);
@@ -360,11 +437,13 @@ const WorldViewOpenLayers = () => {
             { zoom: layerVisible ? 4 : 5, duration: 1500 }
         );
 
-        triggerToast("success", `Moved to event: ${selectedEvent.event_name}`);
+        triggerToast(
+            "success",
+            `Moved to event: ${selectedEvent.event_name}`
+        );
     };
 
     const handleReset = () => {
-
         setSelectedDate(defaultDate);
         setSelectedEventIdx("");
         setSelectedStyle(defaultStyleKey);
@@ -382,9 +461,9 @@ const WorldViewOpenLayers = () => {
         }
     };
 
-
     return (
         <Box style={{ position: "relative" }}>
+            {/* Controls */}
             <Box
                 style={{
                     position: "absolute",
@@ -398,57 +477,51 @@ const WorldViewOpenLayers = () => {
                     padding: "8px",
                     borderRadius: "8px",
                     boxShadow: "0 2px 6px rgba(0,0,0,0.2)"
-                }}>
+                }}
+            >
                 <Tooltip title="Select Date">
                     <Box>
                         <DatePicker
                             selected={selectedDate}
-                            onChange={handleDateChange}
+                            onChange={(date: Date | null) => date && handleDateChange(date)}
                             dateFormat="yyyy-MM-dd"
                             maxDate={new Date(Date.now() - 24 * 60 * 60 * 1000)}
                             disabled={!layerVisible}
-                            customInput={
-                                <input
-                                    style={{
-                                        height: "40px",
-                                        borderRadius: "4px",
-                                        border: "1px solid #c4c4c4",
-                                        padding: "0 10px",
-                                        fontSize: "14px",
-                                        boxSizing: "border-box",
-                                        backgroundColor: "rgba(255, 255, 255, 0.4)"
-                                    }}
-                                />
-                            }
                         />
                     </Box>
                 </Tooltip>
+
                 <FormControl size="small" sx={{ minWidth: 180 }}>
                     <InputLabel>Event</InputLabel>
                     <Tooltip title="Select Event">
                         <Select
                             value={selectedEventIdx}
-                            onChange={(e) => handleEventSelect(Number(e.target.value))}
-                            labelId="event-label"
-                            id='event-id'>
-                            {groupedEvents.reduce((acc, [type, items]) => {
-                                acc.push(
-                                    <ListSubheader key={`${type}-header`}>
-                                        {type.replace(/_/g, " ")}
-                                    </ListSubheader>
-                                );
-                                items.forEach(({ idx, ev }) => {
+                            onChange={(e) =>
+                                handleEventSelect(Number(e.target.value))
+                            }
+                        >
+                            {groupedEvents.reduce(
+                                (acc: React.ReactNode[], [type, items]) => {
                                     acc.push(
-                                        <MenuItem key={idx} value={idx}>
-                                            {ev.event_name || `Event ${idx + 1}`}
-                                        </MenuItem>
+                                        <ListSubheader key={`${type}-header`}>
+                                            {type.replace(/_/g, " ")}
+                                        </ListSubheader>
                                     );
-                                });
-                                return acc;
-                            }, [])}
+                                    items.forEach(({ idx, ev }) => {
+                                        acc.push(
+                                            <MenuItem key={idx} value={idx}>
+                                                {ev.event_name || `Event ${idx + 1}`}
+                                            </MenuItem>
+                                        );
+                                    });
+                                    return acc;
+                                },
+                                []
+                            )}
                         </Select>
                     </Tooltip>
                 </FormControl>
+
                 {loading && (
                     <Box
                         style={{
@@ -463,16 +536,16 @@ const WorldViewOpenLayers = () => {
                             zIndex: 1000,
                             fontWeight: "bold",
                             border: "none",
-                            margin: '1rem'
+                            margin: "1rem"
                         }}
                     >
                         Loading map{loadingDots}
                     </Box>
                 )}
+
                 <FormControl size="small" sx={{ minWidth: 150 }}>
                     <Tooltip title="Select Style">
                         <Select
-                            id="style-id"
                             value={selectedStyle}
                             onChange={handleStyleChange}
                             disabled={!layerVisible}
@@ -485,26 +558,32 @@ const WorldViewOpenLayers = () => {
                         </Select>
                     </Tooltip>
                 </FormControl>
+
                 <Box display="flex" alignItems="center">
-                    <Tooltip title={layerVisible ? "Show OSM Layer" : "Show HLS Layer"}>
+                    <Tooltip
+                        title={layerVisible ? "Show OSM Layer" : "Show HLS Layer"}
+                    >
                         <Switch
                             checked={layerVisible}
                             onChange={handleVisibilityToggle}
                         />
                     </Tooltip>
                 </Box>
+
                 <Box display="flex" alignItems="center">
                     <Tooltip title="Reset Map">
                         <Button
                             onClick={handleReset}
                             variant="outlined"
-                            sx={{ color: 'inherit', borderColor: '#A8A8A8' }}
+                            sx={{ color: "inherit", borderColor: "#A8A8A8" }}
                         >
                             Reset
                         </Button>
                     </Tooltip>
                 </Box>
             </Box>
+
+            {/* Map */}
             <Box id="map" style={{ width: "100%", height: "92vh" }}></Box>
             <ToastContainer />
         </Box>
