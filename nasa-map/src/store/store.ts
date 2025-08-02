@@ -12,7 +12,7 @@ const persistConfig: PersistConfig<ReturnType<typeof mapReducer>> = {
 // Create persisted reducer
 const persistedMapReducer = persistReducer(persistConfig, mapReducer);
 
-// Configure store
+// Configure store (Toolkit store, not MockStore)
 export const store = configureStore({
     reducer: {
         map: persistedMapReducer,
