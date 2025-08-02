@@ -4,7 +4,7 @@
 
 ![NASA HLS World Viewer](./nasaImg.png)
 
-A **React** web application for exploring NASA satellite imagery using two rendering engines: **OpenLayers** and **DeckGL**.
+A **React + TypeScript** web application for exploring NASA satellite imagery using two rendering engines: **OpenLayers** and **DeckGL**.
 
 ---
 
@@ -66,9 +66,21 @@ Users can switch between these two rendering engines via their respective routes
 
 ---
 
+## TypeScript Migration
+
+The project is being incrementally migrated from JavaScript to TypeScript for stronger type safety and maintainability.
+
+- All `.js` and `.jsx` files are being renamed to `.ts` and `.tsx` respectively.  
+- A `tsconfig.json` file has been added to configure TypeScript with React.  
+- Type definitions (`@types/react`, `@types/react-dom`, `@types/redux`, `@types/react-redux`, `@types/ol`) are installed.  
+- Migration is incremental — JavaScript files will continue working alongside TypeScript until fully converted (`"allowJs": true` in `tsconfig.json`).  
+- Components and utilities are gradually receiving explicit type annotations.
+
+---
+
 ## Tech Stack
 
-- **React** — Frontend framework  
+- **React + TypeScript** — Frontend framework & type safety  
 - **Redux Toolkit + React Redux** — State management & caching  
 - **OpenLayers** — Primary map rendering engine  
 - **DeckGL** — Secondary map rendering engine (work in progress)  
