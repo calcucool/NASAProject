@@ -26,9 +26,9 @@ function MainTabs() {
   // Determine tab based on path
   const tabValue = location.pathname === "/deckgl" ? 1 : 0;
 
-  const handleChange = (event, newValue) => {
+  const handleChange = ((event: any, newValue: any) => {
     navigate(newValue === 0 ? "/openlayers" : "/deckgl");
-  };
+  });
 
   return (
     <Box sx={{ width: "100%", backgroundColor: "#696969", zIndex: 30000 }}>

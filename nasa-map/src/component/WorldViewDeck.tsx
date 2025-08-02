@@ -7,6 +7,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+
 import {
     Box,
     Tooltip,
@@ -17,28 +18,73 @@ import {
     Select,
     MenuItem,
     ListSubheader,
+    SelectChangeEvent,
 } from "@mui/material";
+
 import events from "../preloaded_events.json";
+
+// ---- Types ----
+interface EventItem {
+    event_type?: string;
+    event_name?: string;
+    geojson?: {
+        features?: {
+            geometry?: {
+                coordinates?: number[] | number[][][];
+            };
+        }[];
+    };
+}
+
+interface StyleInfo {
+    id: string;
+    matrix: string;
+}
+
+type StyleOptions = Record<string, StyleInfo>;
+
+interface ViewState {
+    longitude: number;
+    latitude: number;
+    zoom: number;
+    pitch: number;
+    bearing: number;
+}
 
 const defaultDate = new Date(Date.now() - 86400000 * 2);
 
-export default function WorldViewDeck() {
-    const deckRef = useRef(null);
-    const [selectedDate, setSelectedDate] = useState(defaultDate);
-    const [selectedEventIdx, setSelectedEventIdx] = useState("");
-    const [selectedStyle, setSelectedStyle] = useState("");
-    const [styleOptions, setStyleOptions] = useState({});
-    const [layerVisible, setLayerVisible] = useState(false);
-    const [viewState, setViewState] = useState({
-        longitude: -100,  // Central US approx
+type TileBoundingBox = {
+    west: number;
+    south: number;
+    east: number;
+    north: number;
+};
+
+interface ExtendedTileBoundingBox extends TileBoundingBox {
+    north: number;
+}
+
+const WorldViewDeck: React.FC = () => {
+    const deckRef = useRef<any>(null);
+
+    const [selectedDate, setSelectedDate] = useState<Date>(defaultDate);
+    const [selectedEventIdx, setSelectedEventIdx] = useState<number | "">("");
+    const [selectedStyle, setSelectedStyle] = useState<string>("");
+    const [styleOptions, setStyleOptions] = useState<StyleOptions>({});
+    const [layerVisible, setLayerVisible] = useState<boolean>(false);
+    const [viewState, setViewState] = useState<ViewState>({
+        longitude: -100, // Central US approx
         latitude: 40,
         zoom: 3,
         pitch: 0,
         bearing: 0,
     });
+
     const groupedEvents = useMemo(() => {
         return Object.entries(
-            events.reduce((acc, ev, idx) => {
+            (events as EventItem[]).reduce<
+                Record<string, { idx: number; ev: EventItem }[]>
+            >((acc, ev, idx) => {
                 const type = ev.event_type || "Other";
                 if (!acc[type]) acc[type] = [];
                 acc[type].push({ idx, ev });
@@ -47,7 +93,7 @@ export default function WorldViewDeck() {
         );
     }, []);
 
-    // Cleanup on unmount to remove DeckGL canvas
+    // Cleanup on unmount
     useEffect(() => {
         return () => {
             if (deckRef.current && deckRef.current.deck) {
@@ -66,7 +112,7 @@ export default function WorldViewDeck() {
         });
     }, []);
 
-    const fetchStyles = async () => {
+    const fetchStyles = async (): Promise<StyleOptions> => {
         const url =
             "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/wmts.cgi?request=GetCapabilities";
         const res = await fetch(url);
@@ -75,17 +121,17 @@ export default function WorldViewDeck() {
         const xmlDoc = parser.parseFromString(text, "application/xml");
 
         const layers = xmlDoc.getElementsByTagName("Layer");
-        const stylesMap = {};
+        const stylesMap: StyleOptions = {};
 
         Array.from(layers).forEach((layer) => {
             const identifier =
-                layer.getElementsByTagName("ows:Identifier")[0]?.textContent;
+                layer.getElementsByTagName("ows:Identifier")[0]?.textContent || "";
             const tileMatrixSet =
                 layer
                     .getElementsByTagName("TileMatrixSetLink")[0]
                     ?.getElementsByTagName("TileMatrixSet")[0]?.textContent ?? "";
 
-            if (identifier?.includes("CorrectedReflectance")) {
+            if (identifier.includes("CorrectedReflectance")) {
                 const label = identifier
                     .replace(/_/g, " ")
                     .replace("CorrectedReflectance", "")
@@ -109,10 +155,9 @@ export default function WorldViewDeck() {
             maxZoom: 19,
             tileSize: 256,
             renderSubLayers: (props) => {
-                console.log("OSM renderSubLayers props.data:", props.data);
                 if (!props.tile || !props.tile.bbox) return null;
                 if (!props.data || typeof props.data !== "string") return null;
-                const { west, south, east, north } = props.tile.bbox;
+                const { west, south, east, north } = props.tile.bbox as ExtendedTileBoundingBox;
                 return new BitmapLayer(props, {
                     id: `${props.id}-bitmap`,
                     image: props.data,
@@ -128,23 +173,20 @@ export default function WorldViewDeck() {
 
         return new TileLayer({
             id: "nasa-base",
-            data: `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${styleOptions[selectedStyle].id}/default/${selectedDate
-                .toISOString()
-                .split("T")[0]}/${styleOptions[selectedStyle].matrix}/{z}/{y}/{x}.jpg`,
+            data: `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${styleOptions[selectedStyle].id
+                }/default/${selectedDate.toISOString().split("T")[0]}/${styleOptions[selectedStyle].matrix
+                }/{z}/{y}/{x}.jpg`,
             minZoom: 0,
             maxZoom: 8,
             tileSize: 256,
             visible: layerVisible,
-            loadOptions: {
-                image: { type: "image" },
-            },
+            loadOptions: { image: { type: "image" } },
             onTileLoad: () => console.log("NASA tile loaded"),
-            onTileError: (e) => console.error("NASA tile load error", e),
+            onTileError: (e: unknown) => console.error("NASA tile load error", e),
             renderSubLayers: (props) => {
-                console.log("NASA renderSubLayers props.data:", props.data);
                 if (!props.tile || !props.tile.bbox) return null;
                 if (!props.data || typeof props.data !== "string") return null;
-                const { west, south, east, north } = props.tile.bbox;
+                const { west, south, east, north } = props.tile.bbox as ExtendedTileBoundingBox;
                 return new BitmapLayer(props, {
                     id: `${props.id}-bitmap`,
                     image: props.data,
@@ -158,13 +200,13 @@ export default function WorldViewDeck() {
     const eventLayer = useMemo(() => {
         return new ScatterplotLayer({
             id: "event-layer",
-            data: selectedEventIdx !== "" ? [events[selectedEventIdx]] : [],
-            getPosition: (ev) => {
+            data: selectedEventIdx !== "" ? [(events as EventItem[])[selectedEventIdx]] : [],
+            getPosition: (ev: EventItem) => {
                 const coords =
                     ev.geojson?.features?.[0]?.geometry?.coordinates || [0, 0];
                 return typeof coords[0] === "number"
-                    ? coords
-                    : coords.flat(Infinity).slice(0, 2);
+                    ? (coords as number[])
+                    : (coords as any).flat(Infinity).slice(0, 2);
             },
             getRadius: 200000,
             getFillColor: [255, 0, 0],
@@ -173,23 +215,31 @@ export default function WorldViewDeck() {
     }, [selectedEventIdx]);
 
     // Handlers
-    const handleDateChange = (date) => setSelectedDate(date);
-    const handleStyleChange = (e) => setSelectedStyle(e.target.value);
+    const handleDateChange = (date: Date | null) => {
+        if (date) setSelectedDate(date);
+    };
+
+    const handleStyleChange = (e: SelectChangeEvent<string>) => {
+        setSelectedStyle(e.target.value);
+    };
+
     const handleVisibilityToggle = () => setLayerVisible((v) => !v);
-    const handleEventSelect = (idx) => {
+
+    const handleEventSelect = (idx: number) => {
         setSelectedEventIdx(idx);
-        const selectedEvent = events[idx];
+        const selectedEvent = (events as EventItem[])[idx];
         if (selectedEvent) {
             const coords =
                 selectedEvent.geojson?.features?.[0]?.geometry?.coordinates || [0, 0];
             const [lon, lat] =
                 typeof coords[0] === "number"
-                    ? coords
-                    : coords.flat(Infinity).slice(0, 2);
+                    ? (coords as number[])
+                    : (coords as any).flat(Infinity).slice(0, 2);
             setViewState((v) => ({ ...v, longitude: lon, latitude: lat, zoom: 5 }));
             toast.success(`Moved to event: ${selectedEvent.event_name}`);
         }
     };
+
     const handleReset = () => {
         setSelectedDate(defaultDate);
         setSelectedEventIdx("");
@@ -237,7 +287,7 @@ export default function WorldViewDeck() {
                             value={selectedEventIdx}
                             onChange={(e) => handleEventSelect(Number(e.target.value))}
                         >
-                            {groupedEvents.reduce((acc, [type, items]) => {
+                            {groupedEvents.reduce((acc: React.ReactNode[], [type, items]) => {
                                 acc.push(
                                     <ListSubheader key={`${type}-header`}>
                                         {type.replace(/_/g, " ")}
@@ -284,12 +334,13 @@ export default function WorldViewDeck() {
                 ref={deckRef}
                 viewState={viewState}
                 controller={true}
-                onViewStateChange={({ viewState }) => setViewState(viewState)}
+                onViewStateChange={(params: any) => setViewState(params.viewState)}
                 layers={[osmLayer, nasaLayer, eventLayer].filter(Boolean)}
                 style={{ width: "100%", height: "92vh" }}
             />
-
             <ToastContainer />
         </Box>
     );
-}
+};
+
+export default WorldViewDeck;
