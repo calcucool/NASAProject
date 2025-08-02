@@ -183,6 +183,8 @@ const WorldViewOpenLayers = () => {
         }
 
         setTimeout(() => setLoading(false), 6000);
+
+        return () => toast.dismiss();
     }, []);
 
     const fetchStyles = async () => {
@@ -261,7 +263,7 @@ const WorldViewOpenLayers = () => {
             if (failureRate > 0.7) {
                 triggerToast("error", `Encountered loading maps for ${styleKey}`);
             } else {
-                triggerToast("success", `Loaded ${styleKey} successfully`);
+                triggerToast("success", `Loaded hhhhhhhhhh${styleKey} successfully`);
             }
         }, 3000);
 

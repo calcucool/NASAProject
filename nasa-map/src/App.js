@@ -1,45 +1,50 @@
 /* eslint-disable */
-import { useState } from "react";
 import { Tabs, Tab, Box } from "@mui/material";
-import { WorldViewLeaflet } from "./component/WorldViewLeaflet";
+import WorldViewDeck from "./component/WorldViewDeck";
 import WorldViewOpenLayers from "./component/WorldViewOpenLayers";
 import { Provider } from "react-redux";
 import { store, persistor } from "./store";
 import { PersistGate } from "redux-persist/integration/react";
+import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation, Navigate } from "react-router-dom";
 
 function App() {
-  const [tabValue, setTabValue] = useState(0);
+  return (
+    <Provider store={store}>
+      <PersistGate loading={null} persistor={persistor}>
+        <Router>
+          <MainTabs />
+        </Router>
+      </PersistGate>
+    </Provider>
+  );
+}
+
+function MainTabs() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Determine tab based on path
+  const tabValue = location.pathname === "/deckgl" ? 1 : 0;
 
   const handleChange = (event, newValue) => {
-    setTabValue(newValue);
+    navigate(newValue === 0 ? "/openlayers" : "/deckgl");
   };
 
   return (
-
-    <Box sx={{ width: "100%", backgroundColor: "#696969" }}>
-
+    <Box sx={{ width: "100%", backgroundColor: "#696969", zIndex: 30000 }}>
       <Tabs value={tabValue} onChange={handleChange} centered>
         <Tab label="OpenLayers" />
-        <Tab label="Leaflet" />
+        <Tab label="DeckGL" />
       </Tabs>
-      <Box sx={{ padding: 2 }}>
-        {tabValue === 0 && (
-          <Provider store={store}>
-            <PersistGate loading={null} persistor={persistor}>
-              <Box>
-                <WorldViewOpenLayers />
-              </Box>
-            </PersistGate >
-          </Provider >
-        )}
-        {tabValue === 1 && (
-          <Box>
-            <WorldViewLeaflet />
-          </Box>
-        )}
-      </Box>
-    </Box >
 
+      <Box sx={{ padding: 2 }}>
+        <Routes>
+          <Route path="/" element={<Navigate to="/openlayers" replace />} />
+          <Route path="/openlayers" element={<WorldViewOpenLayers />} />
+          <Route path="/deckgl" element={<WorldViewDeck />} />
+        </Routes>
+      </Box>
+    </Box>
   );
 }
 
