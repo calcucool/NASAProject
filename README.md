@@ -25,8 +25,12 @@ Users can switch between these two rendering engines via their respective routes
 
 ## OpenLayers Features
 
-- **Date Selection**  
-  Pick a date to reload NASA HLS WMTS imagery (defaults to two days before today).
+- **Date Range Selection**  
+  Select a custom date range to load multi-day composite NASA HLS WMTS imagery.  
+  - **Default**: 1-day range (yesterday to today)  
+  - **Maximum**: 14-day range for broader composite views  
+  - Cached ranges are stored for fast reload  
+  *Note:* The 14-day limit ensures optimal NASA GIBS API performance and data reliability.
 
 - **Event Selection**  
   Choose events from a preloaded JSON file; the map pans and zooms smoothly to the event location with an animated pulse marker.
@@ -44,7 +48,7 @@ Users can switch between these two rendering engines via their respective routes
   Show or hide the HLS layer over the OSM base map.
 
 - **Reset Button**  
-  Resets date, style, visibility, and event selection to defaults, zooming back to the world view.
+  Resets the date range, style, visibility, and event selection to defaults, zooming back to the world view.
 
 - **Toast Notifications**  
   Displays success or error messages when imagery tiles load or fail.
@@ -81,12 +85,12 @@ The project is being incrementally migrated from JavaScript to TypeScript for st
 ## Tech Stack
 
 - **React + TypeScript** — Frontend framework & type safety  
-- **Redux Toolkit + React Redux** — State management & caching  
+- **Redux Toolkit + React Redux** — State management & caching (optimized for date ranges)  
 - **OpenLayers** — Primary map rendering engine  
 - **DeckGL** — Secondary map rendering engine (work in progress)  
 - **NASA GIBS WMTS** — Imagery source  
 - **Material UI (MUI)** — UI components  
-- **React DatePicker** — Date selection  
+- **React DatePicker** — Date range selection (up to 14 days)  
 - **React Toastify** — Notifications  
 - **Jest + React Testing Library** — Unit testing  
 - **Docker** — Containerized production deployment  

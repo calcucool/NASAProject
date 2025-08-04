@@ -269,8 +269,9 @@ const WorldViewDeck: React.FC = () => {
                 }}
             >
                 <Tooltip title="Select Date">
-                    <Box>
+                    <Box style={{ backgroundColor: "rgba(255, 255, 255, 0.8)" }}>
                         <DatePicker
+                            showIcon
                             selected={selectedDate}
                             onChange={handleDateChange}
                             dateFormat="yyyy-MM-dd"

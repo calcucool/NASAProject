@@ -19,6 +19,7 @@ import Fill from "ol/style/Fill";
 import Stroke from "ol/style/Stroke";
 
 import DatePicker from "react-datepicker";
+import { differenceInCalendarDays, addDays } from "date-fns";
 import "react-datepicker/dist/react-datepicker.css";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -66,7 +67,9 @@ export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
 
 const TOAST_COOLDOWN = 5000;
 const defaultStyleKey = "HLS S30 NADIR";
-const defaultDate = new Date(Date.now() - 86400000 * 2);
+const defaultStartDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+const defaultEndDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+const MAX_RANGE_DAYS = 14;
 
 const WorldViewOpenLayers: React.FC = () => {
 
@@ -75,7 +78,8 @@ const WorldViewOpenLayers: React.FC = () => {
     const layerVisible = useAppSelector((state: any) => state.map.layerVisible);
     const styleOptions = useAppSelector((state: any) => state.map.styleOptions);
 
-    const [selectedDate, setSelectedDate] = useState<Date>(defaultDate);
+    const [selectedStartDate, setSelectedStartDate] = useState<Date | null>(defaultStartDate);
+    const [endDate, setEndDate] = useState<Date | null>(defaultEndDate);
     const [loading, setLoading] = useState(false);
     const [selectedEventIdx, setSelectedEventIdx] = useState<number | "">("");
     const [selectedStyle, setSelectedStyle] = useState<string>(defaultStyleKey);
@@ -86,7 +90,7 @@ const WorldViewOpenLayers: React.FC = () => {
     const osmLayerRef = useRef<TileLayer<OSM> | null>(null);
     const pulseLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
     const lastToastTime = useRef<number>(0);
-    const lastToastType = useRef<"success" | "error" | null>(null);
+    const lastToastType = useRef<"success" | "error" | "warn" | null>(null);
 
     const groupedEvents = useMemo(() => {
         return Object.entries(
@@ -106,8 +110,6 @@ const WorldViewOpenLayers: React.FC = () => {
         date: Date,
         onTileStats?: (status: "start" | "error") => void
     ) => {
-
-
         const proj = getProjection("EPSG:4326");
         if (!proj) {
             throw new Error("Projection EPSG:4326 could not be loaded");
@@ -198,33 +200,18 @@ const WorldViewOpenLayers: React.FC = () => {
         mapRef.current = mapInstance;
         mapInstance.getViewport().style.backgroundColor = "#5385c2ff";
 
-        const cacheEntry = layersByDate[selectedDate.toISOString()];
+        const cacheEntry = layersByDate[`${defaultStartDate.toISOString()}_${defaultEndDate.toISOString()}`];
 
-        if (
-            cacheEntry &&
-            cacheEntry.wmtsLayers?.length &&
-            Date.now() - cacheEntry.lastUpdated < 6 * 24 * 60 * 60 * 1000
-        ) {
+        if (cacheEntry && cacheEntry.wmtsLayers?.length) {
             cacheEntry.wmtsLayers.forEach((cfg: { styleKey: string; time: string }) => {
-                const layer = createHLSLayerForDate(
-                    cfg.styleKey,
-                    new Date(cfg.time)
-                );
+                const layer = createHLSLayerForDate(cfg.styleKey, new Date(cfg.time));
                 if (layer) {
                     mapRef.current?.addLayer(layer);
                     hlsLayerRef.current.push(layer);
                 }
             });
         } else {
-            const wmtsConfigs = updateLayer(selectedStyle, new Date(selectedDate));
-            dispatch(
-                cacheLayersForDate({
-                    date: selectedDate.toISOString(),
-                    styleKey: selectedStyle,
-                    wmtsLayers: wmtsConfigs,
-                    lastUpdated: Date.now()
-                })
-            );
+            updateLayer(selectedStyle, defaultStartDate, defaultEndDate);
         }
 
         setTimeout(() => setLoading(false), 6000);
@@ -263,7 +250,7 @@ const WorldViewOpenLayers: React.FC = () => {
         return stylesMap;
     };
 
-    const triggerToast = (type: "success" | "error", message: string) => {
+    const triggerToast = (type: "success" | "error" | "warn", message: string) => {
         const now = Date.now();
         if (
             type === lastToastType.current &&
@@ -276,9 +263,30 @@ const WorldViewOpenLayers: React.FC = () => {
         lastToastType.current = type;
     };
 
-    const updateLayer = (styleKey: string, date: Date) => {
+    const updateLayer = (styleKey: string, startDate: Date, endDate: Date) => {
         if (!mapRef.current) return [];
         setLoading(true);
+
+        const rangeKey = `${startDate.toISOString()}_${endDate.toISOString()}`;
+        const cacheEntry = layersByDate[rangeKey];
+
+        if (cacheEntry && cacheEntry.wmtsLayers?.length) {
+            console.log(`Using cached layers for ${rangeKey}`);
+            hlsLayerRef.current.forEach(layer => mapRef.current?.removeLayer(layer));
+            hlsLayerRef.current = [];
+
+            cacheEntry.wmtsLayers.forEach((cfg: any) => {
+                const layer = createHLSLayerForDate(cfg.styleKey, new Date(cfg.time));
+                if (layer) {
+                    mapRef.current?.addLayer(layer);
+                    hlsLayerRef.current.push(layer);
+                }
+            });
+
+            setTimeout(() => setLoading(false), 1000);
+            triggerToast("success", `Loaded ${styleKey} from cache`);
+            return cacheEntry.wmtsLayers;
+        }
 
         let totalStarted = 0;
         let totalFailed = 0;
@@ -289,33 +297,26 @@ const WorldViewOpenLayers: React.FC = () => {
 
         const wmtsConfigs: { styleKey: string; time: string }[] = [];
 
-        if (hlsLayerRef.current.length === 0) {
-            for (let i = 0; i < 3; i++) {
-                const day = new Date(date);
-                day.setDate(date.getDate() - i);
-                const dayISO = day.toISOString().split("T")[0];
+        const rangeDays =
+            Math.floor(
+                (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+            ) + 1;
 
-                wmtsConfigs.push({ styleKey, time: dayISO });
+        hlsLayerRef.current.forEach(layer => mapRef.current?.removeLayer(layer));
+        hlsLayerRef.current = [];
 
-                const hlsLayer = createHLSLayerForDate(styleKey, day, onTileStats);
-                if (hlsLayer) {
-                    mapRef.current.addLayer(hlsLayer);
-                    hlsLayerRef.current.push(hlsLayer);
-                }
+        for (let i = 0; i < rangeDays; i++) {
+            const day = new Date(endDate);
+            day.setDate(endDate.getDate() - i);
+            const dayISO = day.toISOString().split("T")[0];
+
+            wmtsConfigs.push({ styleKey, time: dayISO });
+
+            const hlsLayer = createHLSLayerForDate(styleKey, day, onTileStats);
+            if (hlsLayer) {
+                mapRef.current.addLayer(hlsLayer);
+                hlsLayerRef.current.push(hlsLayer);
             }
-        } else {
-            hlsLayerRef.current.forEach((layer, i) => {
-                const day = new Date(date);
-                day.setDate(date.getDate() - i);
-                const dayISO = day.toISOString().split("T")[0];
-
-                wmtsConfigs.push({ styleKey, time: dayISO });
-
-                const newLayer = createHLSLayerForDate(styleKey, day, onTileStats);
-                if (newLayer) {
-                    layer.setSource(newLayer.getSource());
-                }
-            });
         }
 
         setTimeout(() => {
@@ -330,7 +331,7 @@ const WorldViewOpenLayers: React.FC = () => {
 
         dispatch(
             cacheLayersForDate({
-                date: date.toISOString(),
+                date: rangeKey,
                 styleKey,
                 wmtsLayers: wmtsConfigs,
                 lastUpdated: Date.now()
@@ -342,16 +343,36 @@ const WorldViewOpenLayers: React.FC = () => {
         return wmtsConfigs;
     };
 
-    const handleDateChange = (date: Date) => {
-        setSelectedDate(date);
-        setSelectedEventIdx("");
-        updateLayer(selectedStyle, date);
+    const handleDateChange = (update: [Date | null, Date | null]) => {
+        let [start, end] = update;
+
+        if (start && end) {
+            const diff = differenceInCalendarDays(end, start);
+
+            if (diff > MAX_RANGE_DAYS) {
+                // Force end date to be start + 14 days
+                end = addDays(start, MAX_RANGE_DAYS);
+                triggerToast("warn", `Date range limited to ${MAX_RANGE_DAYS} days`);
+                return
+            }
+
+            setSelectedStartDate(start);
+            setEndDate(end);
+            setSelectedEventIdx("");
+            updateLayer(selectedStyle, start, end);
+        } else {
+            // If one of them is null, just update normally
+            setSelectedStartDate(start);
+            setEndDate(end);
+        }
     };
 
     const handleStyleChange = (event: SelectChangeEvent<string>) => {
         const newStyle = event.target.value as string;
+        const start = selectedStartDate ?? defaultStartDate;
+        const end = endDate ?? defaultEndDate;
         setSelectedStyle(newStyle);
-        updateLayer(newStyle, selectedDate);
+        updateLayer(newStyle, start, end);
     };
 
     const handleVisibilityToggle = () => {
@@ -444,12 +465,13 @@ const WorldViewOpenLayers: React.FC = () => {
     };
 
     const handleReset = () => {
-        setSelectedDate(defaultDate);
+        setSelectedStartDate(defaultStartDate);
+        setEndDate(defaultEndDate);
         setSelectedEventIdx("");
         setSelectedStyle(defaultStyleKey);
         dispatch(setLayerVisible(true));
 
-        updateLayer(defaultStyleKey, defaultDate);
+        updateLayer(defaultStyleKey, defaultStartDate, defaultEndDate);
 
         if (mapRef.current) {
             const view = mapRef.current.getView();
@@ -463,7 +485,6 @@ const WorldViewOpenLayers: React.FC = () => {
 
     return (
         <Box style={{ position: "relative" }}>
-            {/* Controls */}
             <Box
                 style={{
                     position: "absolute",
@@ -476,14 +497,18 @@ const WorldViewOpenLayers: React.FC = () => {
                     backgroundColor: "rgba(255, 255, 255, 0.8)",
                     padding: "8px",
                     borderRadius: "8px",
-                    boxShadow: "0 2px 6px rgba(0,0,0,0.2)"
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
                 }}
             >
-                <Tooltip title="Select Date">
-                    <Box>
+                <Tooltip title="Select Date Range">
+                    <Box style={{ width: "14rem" }}>
                         <DatePicker
-                            selected={selectedDate}
-                            onChange={(date: Date | null) => date && handleDateChange(date)}
+                            showIcon
+                            selectsRange
+                            isClearable
+                            startDate={selectedStartDate}
+                            endDate={endDate}
+                            onChange={handleDateChange}
                             dateFormat="yyyy-MM-dd"
                             maxDate={new Date(Date.now() - 24 * 60 * 60 * 1000)}
                             disabled={!layerVisible}
@@ -558,7 +583,6 @@ const WorldViewOpenLayers: React.FC = () => {
                         </Select>
                     </Tooltip>
                 </FormControl>
-
                 <Box display="flex" alignItems="center">
                     <Tooltip
                         title={layerVisible ? "Show OSM Layer" : "Show HLS Layer"}
