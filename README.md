@@ -1,6 +1,6 @@
 # 🌍 NASA HLS World Viewer
 
-**Live App:** [World View App](https://heartfelt-jalebi-6947b2.netlify.app/)
+**Live App:** [World View App](https://nasaworldview.netlify.app/)
 
 ![NASA HLS World Viewer](./nasaImg.png)
 
